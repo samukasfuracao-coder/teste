@@ -196,6 +196,12 @@ class FishingHub:
             ttk.Label(row, text=title, style='Card.TLabel').pack(side='left')
             ttk.Label(row, textvariable=self.vars[key], style='Card.TLabel').pack(side='left', padx=15)
             ttk.Button(row, text='Alterar', command=lambda k=key: self.capture_hotkey(k)).pack(side='right')
+        self.vars['startup_shift'] = tk.BooleanVar()
+        ttk.Checkbutton(hotkeys, text='Tocar Shift esquerdo no primeiro início',
+                        variable=self.vars['startup_shift']).pack(anchor='w', pady=(10, 5))
+        ttk.Label(hotkeys, text='Apenas uma vez ao abrir o app; não repete ao retomar. '
+                  'Comece com Shift Lock desligado, pois Shift alterna esse modo.',
+                  wraplength=390, style='MutedCard.TLabel').pack(anchor='w', pady=(0, 5))
         ttk.Button(inner, text='Aplicar e salvar perfil', style='Primary.TButton',
                    command=self.apply_and_save).pack(fill='x', pady=4)
         ttk.Button(inner, text='Carregar ajustes padrão', command=self.load_defaults).pack(fill='x', pady=4)

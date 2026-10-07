@@ -9,7 +9,7 @@ from pathlib import Path
 DEFAULTS = dict(target_fps=90, lookahead=0.08, jump_interval=120,
                 cast_timeout=45, collect_wait=12, collect_timeout=45,
                 start_hotkey='f8', exit_hotkey='esc', theme='dark',
-                accent='#38bdf8', scale=100, topmost=True, auto_start=True)
+                accent='#38bdf8', scale=100, topmost=True, auto_start=True, startup_shift=True)
 
 
 def validate_settings(values):
@@ -31,7 +31,7 @@ def validate_settings(values):
         except (TypeError, ValueError):
             raise ValueError(f'{key}: use um valor entre {low} e {high}.') from None
         result[key] = number if key == 'lookahead' else int(number)
-    for key in ('topmost', 'auto_start'):
+    for key in ('topmost', 'auto_start', 'startup_shift'):
         if not isinstance(result[key], bool):
             raise ValueError(f'{key}: use verdadeiro ou falso.')
     for key in ('start_hotkey', 'exit_hotkey'):
