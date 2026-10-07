@@ -70,7 +70,7 @@ class FishingHub:
         self.metric_vars = {k: tk.StringVar(value='0') for k in ('casts', 'collections', 'unconfirmed', 'jumps')}
         self.indicators = {k: tk.StringVar(value='—') for k in ('bar', 'ocr', 'fps', 'inside', 'inputs', 'jump')}
         self.footer = tk.StringVar()
-        self.root.title('Pesca Auto | Hub')
+        self.root.title('Mukz auto fish')
         self.root.minsize(500, 620)
         self.root.protocol('WM_DELETE_WINDOW', self.state.stopped.set)
         self.root.bind('<Configure>', self.overlay_changed)
@@ -88,9 +88,6 @@ class FishingHub:
         self.shell.pack(fill='both', expand=True)
         header = ttk.Frame(self.shell, style='Shell.TFrame')
         header.pack(fill='x', pady=(0, 10))
-        ttk.Label(header, text='PESCA AUTO', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(header, text='Pesca, coleta e controle em um só lugar.',
-                  style='Subtitle.TLabel').pack(anchor='w', pady=(2, 10))
         profile_row = ttk.Frame(header, style='Shell.TFrame')
         profile_row.pack(fill='x')
         ttk.Label(profile_row, text='PERFIL', style='Eyebrow.TLabel').pack(side='left', padx=(0, 10))
@@ -101,7 +98,9 @@ class FishingHub:
         ttk.Button(profile_row, text='Salvar', command=self.apply_and_save).pack(side='left', padx=(8, 0))
         self.start_button = ttk.Button(self.shell, text='Iniciar / pausar',
                                       style='Primary.TButton', command=self.toggle)
-        self.start_button.pack(fill='x', pady=(0, 12), ipady=5)
+        self.start_button.pack(fill='x', pady=(0, 4), ipady=5)
+        self.author_label = ttk.Label(self.shell, text='by mukz', style='Subtitle.TLabel', anchor='center')
+        self.author_label.pack(fill='x', pady=(0, 12))
         self.notebook = ttk.Notebook(self.shell)
         self.pages = {}
         for key, title in [('main', 'Principal'), ('settings', 'Ajustes'), ('profiles', 'Perfis'),

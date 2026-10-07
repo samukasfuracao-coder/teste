@@ -9,10 +9,10 @@ if not exist ".venv-auto\Scripts\python.exe" (
 if errorlevel 1 goto failed
 set "PESCA_ICON_ARGS="
 if exist "icone.ico" set PESCA_ICON_ARGS=--icon "icone.ico" --add-data "icone.ico;."
-".venv-auto\Scripts\python.exe" -m PyInstaller --noconfirm --onedir --windowed --name PescaAuto %PESCA_ICON_ARGS% --collect-all rapidocr_onnxruntime --collect-all onnxruntime --hidden-import pynput.keyboard._win32 --hidden-import pynput.mouse._win32 fishing_auto.py
+".venv-auto\Scripts\python.exe" -m PyInstaller --noconfirm --onedir --windowed --name "Mukz auto fish" %PESCA_ICON_ARGS% --collect-all rapidocr_onnxruntime --collect-all onnxruntime --hidden-import pynput.keyboard._win32 --hidden-import pynput.mouse._win32 fishing_auto.py
 if errorlevel 1 goto failed
-echo Pronto: dist\PescaAuto\PescaAuto.exe
-echo Mantenha o EXE junto com todos os arquivos da pasta PescaAuto.
+echo Pronto: dist\Mukz auto fish\Mukz auto fish.exe
+echo Mantenha o EXE junto com todos os arquivos da pasta Mukz auto fish.
 pause
 exit /b 0
 :failed

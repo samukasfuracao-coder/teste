@@ -1,4 +1,4 @@
-# Assistente de pesca (Windows)
+# Mukz auto fish (Windows)
 
 ## Modo automatico (experimental)
 
@@ -19,7 +19,7 @@ Ao atualizar, copie todos os arquivos Python, incluindo **hub.py**, **cycle.py**
 
 ### Personalizacao por pessoa
 
-Para o icone do arquivo EXE, da janela aberta e da barra de tarefas, coloque um **icone.ico** valido junto de gerar_exe.bat e execute o script novamente. O ICO e embutido no EXE e incluido como recurso para o hub; nao e necessario enviar o arquivo original separado ao amigo. A janela utiliza uma identidade propria na barra de tarefas, sem agrupar como Python. Preserve a pasta inteira `dist\PescaAuto`. Se houver um icone.ico ao lado do EXE, ele pode substituir o icone da janela; o icone do arquivo EXE exige nova geracao. Um atalho antigo fixado pode continuar com o icone em cache: desafixe e fixe o executavel atualizado novamente. O carregamento nativo do icone ainda precisa ser confirmado no Windows.
+Para o icone do arquivo EXE, da janela aberta e da barra de tarefas, coloque um **icone.ico** valido junto de gerar_exe.bat e execute o script novamente. O ICO e embutido no EXE e incluido como recurso para o hub; nao e necessario enviar o arquivo original separado ao amigo. A janela utiliza uma identidade propria na barra de tarefas, sem agrupar como Python. Preserve a pasta inteira `dist\Mukz auto fish`. Se houver um icone.ico ao lado do EXE, ele pode substituir o icone da janela; o icone do arquivo EXE exige nova geracao. Um atalho antigo fixado pode continuar com o icone em cache: desafixe e fixe o executavel atualizado novamente. O carregamento nativo do icone ainda precisa ser confirmado no Windows.
 
 Na aba Ajustes, altere FPS, antecipacao, intervalo de pulo e tempos de espera. Os campos mostram limites e explicacoes. "Alterar" captura um novo atalho; F1 a F12 e Esc sao aceitos, sem permitir o mesmo atalho para iniciar e encerrar. Aplicar e salvar pausa a pesca e persiste todos os ajustes do perfil. "Carregar ajustes padrao" preenche os campos; so altera o perfil quando voce salva.
 
@@ -31,7 +31,7 @@ As capturas abaixo mostram a interface renderizada com dados simulados:
 
 A versao atual aceita `--auto-start`: inicia em tres segundos e tenta focar a janela de titulo Roblox. Deixe o jogo aberto, a vara equipada e o ponteiro no local usado para pescar. Perda de foco pausa; F8 retoma e Esc encerra. Execute `iniciar_auto.bat` com dois cliques para usar o ambiente `.venv-auto` existente. O primeiro lancamento nao espera a inicializacao do OCR, que ocorre em paralelo. A coleta continua dependendo do OCR.
 
-Para gerar o executavel **no Windows**, execute `gerar_exe.bat`. Ele instala PyInstaller no ambiente separado e empacota os modelos do OCR e o runtime ONNX. O resultado esperado e `dist\PescaAuto\PescaAuto.exe`: mantenha toda a pasta PescaAuto junto. Use um atalho para abrir com um clique; o executavel inicia automaticamente. Foi escolhido o formato de pasta para evitar a extracao de um executavel unico a cada abertura. O painel mostra estado e erros durante a execucao. A geracao e execucao do EXE ainda precisam de validacao no Windows; nao foram executadas neste ambiente Linux.
+Para gerar o executavel **no Windows**, execute `gerar_exe.bat`. Ele instala PyInstaller no ambiente separado e empacota os modelos do OCR e o runtime ONNX. O resultado esperado e `dist\Mukz auto fish\Mukz auto fish.exe`: mantenha toda a pasta Mukz auto fish junto. Use um atalho para abrir com um clique; o executavel inicia automaticamente. Foi escolhido o formato de pasta para evitar a extracao de um executavel unico a cada abertura. O painel mostra estado e erros durante a execucao. A geracao e execucao do EXE ainda precisam de validacao no Windows; nao foram executadas neste ambiente Linux.
 
 O controlador usa por padrao ate 90 capturas por segundo, suavizacao da velocidade baseada no tempo e antecipacao limitada do movimento da zona. A frequencia real depende do PC. Compare no jogo; precisao superior ainda nao foi medida. Se oscilar, teste `--lookahead 0.06`; para restaurar a frequencia anterior, use `--fps 60`. Esses parametros tambem podem ser passados ao executavel.
 
@@ -81,3 +81,5 @@ Segurar faz o bloco subir; soltar faz descer. O controlador estima a velocidade 
 Esta versão usa as cores das imagens fornecidas: bloco branco e zona verde/amarela. Ela precisa ser calibrada e validada no seu PC; não foi testada no Roblox neste ambiente. Use onde a automação é permitida, sem tentar contornar bloqueios do jogo.
 
 Para lançar a vara com um clique rápido e repetir entre pescas, execute `fishing.py --auto-cast`. Selecione a região com a barra visível, depois pause e volte ao jogo. F8 ativa o controle: se o minigame já estiver visível, controla o bloco; caso contrário, lança uma vez e aguarda. Após dois segundos sem detectar o minigame, aguarda mais três segundos e lança novamente. Se a vara não lançar ou houver uma tela de resultado impedindo a próxima pesca, pause com F8 e resolva manualmente. Não há repetição de cliques enquanto espera uma fisgada. Perdas prolongadas de detecção podem ser confundidas com o fim da pesca.
+
+O titulo da janela e o executavel usam o nome **Mukz auto fish**. O painel exibe apenas **by mukz** abaixo do botao Iniciar/Pausar, sem titulo ou descricao adicionais no cabecalho. Os perfis e registros continuam na pasta de usuario documentada acima para preservar os ajustes de instalacoes anteriores.

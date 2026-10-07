@@ -35,6 +35,22 @@ class HubUITests(unittest.TestCase):
             self.assertTrue(page.winfo_ismapped())
         self.assertIsNotNone(self.state.snapshot()['overlay_rect'])
 
+    def test_branding_is_only_in_title_and_author_below_start(self):
+        self.assertEqual(self.root.title(), 'Mukz auto fish')
+        self.assertEqual(self.app.author_label.cget('text'), 'by mukz')
+        self.assertGreaterEqual(self.app.author_label.winfo_rooty(),
+                                self.app.start_button.winfo_rooty() + self.app.start_button.winfo_height())
+
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+
+        texts = [widget.cget('text') for widget in descendants(self.root)
+                 if widget.winfo_class() == 'TLabel']
+        self.assertNotIn('PESCA AUTO', texts)
+        self.assertNotIn('Pesca, coleta e controle em um só lugar.', texts)
+
     def test_start_and_pause_buttons_use_engine_events(self):
         self.app.toggle()
         self.assertTrue(self.state.start_requested.is_set())
