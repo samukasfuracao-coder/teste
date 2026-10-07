@@ -16,7 +16,7 @@ from telemetry import session_logger
 from vision_text import has_collect, has_disconnect
 from preferences import DEFAULTS, validate_settings
 from screen_mask import mask_overlay
-from startup_input import StartupShift
+from startup_input import StartupLockTap
 
 
 def objects(frame):
@@ -321,7 +321,7 @@ def main(hub=None):
     worker.start()
     cycle = FishingCycle()
     jump_timer = JumpTimer(time.perf_counter())
-    startup_shift = StartupShift()
+    startup_lock = StartupLockTap()
     box = None
     next_scan = 0.0
     previous = None
@@ -401,15 +401,15 @@ def main(hub=None):
                     active.clear()
                     report(status='Pausado', detail='Janela do Roblox indisponível.')
                     continue
-                if not startup_shift.done:
+                if not startup_lock.done:
                     report(status='Iniciando', detail='Preparando Shift Lock antes do primeiro lançamento.')
-                    sent = startup_shift.initialize(
+                    sent = startup_lock.initialize(
                         config['startup_shift'], active, stopped,
                         lambda: user32.GetForegroundWindow() == hwnd,
                         lambda: hold_mouse(False), lambda: hold_t(False),
-                        keys.press, keys.release, keyboard.Key.shift_l)
+                        keys.press, keys.release, keyboard.Key.alt_l)
                     if sent:
-                        logger.info('Shift esquerdo enviado uma vez no início da sessão')
+                        logger.info('Alt esquerdo enviado uma vez no início da sessão')
                     if stopped.is_set() or not active.is_set() or user32.GetForegroundWindow() != hwnd:
                         continue
                 frame = np.array(capture.grab(dict(left=origin.x, top=origin.y,
@@ -529,8 +529,8 @@ def main(hub=None):
         hold_t(False)
         if held_space:
             keys.release(keyboard.Key.space)
-        if startup_shift.held:
-            keys.release(keyboard.Key.shift_l)
+        if startup_lock.held:
+            keys.release(keyboard.Key.alt_l)
         listener.stop()
         logger.info('Sessão encerrada')
 

@@ -1,4 +1,4 @@
-class StartupShift:
+class StartupLockTap:
     """One startup opportunity per process; never reset on pause/resume."""
     def __init__(self):
         self.done = False
