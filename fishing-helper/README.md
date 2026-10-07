@@ -13,9 +13,13 @@ Se voce ja tem `.venv-auto`, basta atualizar os arquivos do programa e instalar 
 
 ### Inicio rapido e executavel
 
+O programa abre um painel flutuante com estado atual, barra detectada, OCR carregando/pronto, FPS medido, bloco dentro/fora da zona e entradas de mouse/T. Os botoes Iniciar, Pausar e Encerrar complementam F8/Esc. Iniciar tenta focar o Roblox e posiciona o ponteiro numa area do jogo para nao clicar no proprio painel. Coloque o painel fora da barra e do aviso Collect; o local inicial fica no canto esquerdo. Perda de foco continua pausando. O contador de coletas registra o desaparecimento do aviso apos T, nao confirma inventario ou identifica o item.
+
+Ao atualizar, copie tambem **hub.py** para a mesma pasta de fishing_auto.py. Para atualizar um EXE ja gerado, execute gerar_exe.bat novamente. O novo executavel usa o painel sem janela de console. A interface e a integracao com o jogo ainda precisam de validacao no Windows.
+
 A versao atual aceita `--auto-start`: inicia em tres segundos e tenta focar a janela de titulo Roblox. Deixe o jogo aberto, a vara equipada e o ponteiro no local usado para pescar. Perda de foco pausa; F8 retoma e Esc encerra. Execute `iniciar_auto.bat` com dois cliques para usar o ambiente `.venv-auto` existente. O primeiro lancamento nao espera a inicializacao do OCR, que ocorre em paralelo. A coleta continua dependendo do OCR.
 
-Para gerar o executavel **no Windows**, execute `gerar_exe.bat`. Ele instala PyInstaller no ambiente separado e empacota os modelos do OCR e o runtime ONNX. O resultado esperado e `dist\PescaAuto\PescaAuto.exe`: mantenha toda a pasta PescaAuto junto. Use um atalho para abrir com um clique; o executavel inicia automaticamente. Foi escolhido o formato de pasta para evitar a extracao de um executavel unico a cada abertura. A janela de console mantem erros e estado visiveis. A geracao e execucao do EXE ainda precisam de validacao no Windows; nao foram executadas neste ambiente Linux.
+Para gerar o executavel **no Windows**, execute `gerar_exe.bat`. Ele instala PyInstaller no ambiente separado e empacota os modelos do OCR e o runtime ONNX. O resultado esperado e `dist\PescaAuto\PescaAuto.exe`: mantenha toda a pasta PescaAuto junto. Use um atalho para abrir com um clique; o executavel inicia automaticamente. Foi escolhido o formato de pasta para evitar a extracao de um executavel unico a cada abertura. O painel mostra estado e erros durante a execucao. A geracao e execucao do EXE ainda precisam de validacao no Windows; nao foram executadas neste ambiente Linux.
 
 O controlador usa por padrao ate 90 capturas por segundo, suavizacao da velocidade baseada no tempo e antecipacao limitada do movimento da zona. A frequencia real depende do PC. Compare no jogo; precisao superior ainda nao foi medida. Se oscilar, teste `--lookahead 0.06`; para restaurar a frequencia anterior, use `--fps 60`. Esses parametros tambem podem ser passados ao executavel.
 

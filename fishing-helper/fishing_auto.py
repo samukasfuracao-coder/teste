@@ -88,7 +88,7 @@ def find_bar(frame):
     return max(candidates, default=(0, None))[1]
 
 
-def main():
+def main(hub=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--auto-start', action='store_true')
     parser.add_argument('--fps', type=int, default=90)
@@ -112,8 +112,32 @@ def main():
     print('Preparando controles...', flush=True)
     pointer = mouse.Controller()
     keys = keyboard.Controller()
-    active = threading.Event()
-    stopped = threading.Event()
+    active = hub.active if hub else threading.Event()
+    stopped = hub.stopped if hub else threading.Event()
+
+    def report(**values):
+        if hub:
+            hub.update(**values)
+
+    def focus_game(move_pointer=False):
+        roblox = user32.FindWindowW(None, 'Roblox')
+        if not roblox:
+            report(status='Pausado', detail='Abra o Roblox e equipe a vara.')
+            return False
+        user32.ShowWindow(roblox, 9)
+        user32.SetForegroundWindow(roblox)
+        if stopped.wait(0.2):
+            return False
+        if user32.GetForegroundWindow() != roblox:
+            report(status='Pausado', detail='Volte ao Roblox e pressione F8.')
+            return False
+        if move_pointer:
+            rect = wintypes.RECT()
+            user32.GetClientRect(roblox, ctypes.byref(rect))
+            point = wintypes.POINT(int(rect.right * 0.5), int(rect.bottom * 0.75))
+            user32.ClientToScreen(roblox, ctypes.byref(point))
+            pointer.position = (point.x, point.y)
+        return True
     held_mouse = False
     held_t = False
     screen_lock = threading.Lock()
@@ -121,6 +145,7 @@ def main():
     prompt_lock = threading.Lock()
     prompt_time = 0.0
     prompt_visible = False
+    ocr_failed = threading.Event()
 
     def hold_mouse(want):
         nonlocal held_mouse
@@ -130,6 +155,7 @@ def main():
             else:
                 pointer.release(mouse.Button.left)
             held_mouse = want
+            report(mouse=want)
 
     def hold_t(want):
         nonlocal held_t
@@ -139,6 +165,7 @@ def main():
             else:
                 keys.release('t')
             held_t = want
+            report(collecting=want)
 
     def on_press(key):
         if key == keyboard.Key.esc:
@@ -150,6 +177,8 @@ def main():
                 active.clear()
             else:
                 active.set()
+            report(status='Iniciando' if active.is_set() else 'Pausado',
+                   detail='Aguardando o jogo.' if active.is_set() else 'Use Iniciar ou F8 para retomar.')
             print('Ativo' if active.is_set() else 'Pausado', flush=True)
 
     def read_prompt():
@@ -157,10 +186,13 @@ def main():
         try:
             from rapidocr_onnxruntime import RapidOCR
             ocr = RapidOCR()
+            report(ocr='Pronto')
             print('Reconhecimento de coleta pronto.', flush=True)
         except Exception as exc:
+            report(status='Erro', detail=str(exc), ocr='Erro')
             print('Falha ao carregar OCR:', exc, flush=True)
-            stopped.set()
+            ocr_failed.set()
+            active.clear()
             return
         while not stopped.is_set():
             if not active.is_set():
@@ -189,6 +221,7 @@ def main():
                     prompt_visible = found
                     prompt_time = time.perf_counter()
             except Exception as exc:
+                report(status='Erro', detail=str(exc), ocr='Erro')
                 print('Falha no OCR; pausando:', exc, flush=True)
                 active.clear()
             stopped.wait(0.15)
@@ -206,22 +239,33 @@ def main():
     velocity = 0.0
     collecting_since = 0.0
     absent_since = None
+    metric_time = time.perf_counter()
+    metric_frames = 0
+    report(status='Pausado', detail='Vara equipada? Use Iniciar ou F8.')
     print('Vara equipada, Roblox em foco. F8 inicia/pausa; Esc encerra.', flush=True)
 
     try:
         if args.auto_start or getattr(sys, 'frozen', False):
+            report(status='Iniciando', detail='Início automático em 3 segundos. Esc cancela.')
             print('Inicio automatico em 3 segundos. Esc cancela.', flush=True)
             if stopped.wait(3):
                 return
-            roblox = user32.FindWindowW(None, 'Roblox')
-            if roblox:
-                user32.ShowWindow(roblox, 9)
-                user32.SetForegroundWindow(roblox)
-                stopped.wait(0.2)
-            active.set()
+            if not ocr_failed.is_set() and focus_game(move_pointer=True):
+                active.set()
         with mss.mss() as capture:
             while not stopped.is_set():
                 started = time.perf_counter()
+                if ocr_failed.is_set():
+                    active.clear()
+                    hold_mouse(False)
+                    hold_t(False)
+                    report(status='Erro', detail='Falha ao carregar OCR. Encerre e reinicie.', ocr='Erro')
+                    stopped.wait(0.1)
+                    continue
+                if hub and hub.start_requested.is_set():
+                    hub.start_requested.clear()
+                    if focus_game(move_pointer=True):
+                        active.set()
                 # Read only the Roblox client area, without selecting an ROI.
                 user32 = ctypes.windll.user32
                 hwnd = user32.GetForegroundWindow()
@@ -241,7 +285,11 @@ def main():
                         prompt_time = 0.0
                     if active.is_set() and not focused:
                         active.clear()
+                        report(status='Pausado', detail='Roblox perdeu o foco. Use Iniciar ou F8.')
                         print('Pausado: Roblox perdeu o foco. Use F8 para retomar.', flush=True)
+                    report(bar=False, inside=None, fps=0)
+                    metric_frames = 0
+                    metric_time = started
                     stopped.wait(0.03)
                     continue
                 rect = wintypes.RECT()
@@ -253,6 +301,12 @@ def main():
                     continue
                 frame = np.array(capture.grab(dict(left=origin.x, top=origin.y,
                                                   width=rect.right, height=rect.bottom)))[:, :, :3].copy()
+                metric_frames += 1
+                elapsed = started - metric_time
+                if elapsed >= 0.5:
+                    report(fps=metric_frames / elapsed)
+                    metric_frames = 0
+                    metric_time = started
                 with screen_lock:
                     latest = frame
                 with prompt_lock:
@@ -274,6 +328,8 @@ def main():
                         velocity = 0.0
                         print('Barra localizada.', flush=True)
 
+                report(bar=detected is not None, inside=None if detected is None else detected[2] <= detected[0] - detected[1] / 2 and detected[0] + detected[1] / 2 <= detected[3])
+
                 if fresh and visible and detected is None:
                     if state != 'collecting':
                         collecting_since = started
@@ -284,10 +340,12 @@ def main():
                     absent_since = None
 
                 if state == 'collecting':
+                    report(status='Coletando', detail='Segurando T enquanto Collect estiver visível.')
                     hold_mouse(False)
                     if not fresh:
                         hold_t(False)
                         active.clear()
+                        report(status='Pausado', detail='Reconhecimento de coleta atrasou.')
                         print('Pausado: reconhecimento de coleta atrasou.', flush=True)
                     elif not visible:
                         hold_t(False)
@@ -296,13 +354,17 @@ def main():
                         elif started - absent_since >= 0.8:
                             state = 'cooldown'
                             next_cast = started + 2.0
+                            if hub:
+                                hub.increment('collections')
                     if started - collecting_since > 15:
                         hold_t(False)
                         active.clear()
+                        report(status='Pausado', detail='Coleta excedeu 15 segundos.')
                         print('Pausado: coleta excedeu 15 segundos.', flush=True)
                 elif detected is not None:
                     hold_t(False)
                     state = 'fishing'
+                    report(status='Pescando', detail='Corrigindo o bloco dentro da zona.')
                     last_seen = started
                     center, bh, top, bottom = detected
                     target = (top + bottom) / 2
@@ -328,6 +390,8 @@ def main():
                     if state == 'fishing' and started - last_seen > 4:
                         state = 'cooldown'
                         next_cast = started + 2.0
+                    report(status='Aguardando' if state == 'cooldown' else 'Procurando barra',
+                           detail='Preparando próximo lançamento.' if state == 'cooldown' else 'Aguardando o minigame aparecer.')
                     if (state in ('idle', 'cooldown') and started >= next_cast
                             and (fresh or state == 'idle') and not (fresh and visible)
                             and active.is_set() and not stopped.is_set()):
@@ -335,6 +399,8 @@ def main():
                         stopped.wait(0.05)
                         hold_mouse(False)
                         state = 'waiting'
+                        if hub:
+                            hub.increment('casts')
                         print('Vara lancada. Procurando a barra...', flush=True)
                 stopped.wait(max(0, 1 / args.fps - (time.perf_counter() - started)))
     finally:
@@ -345,4 +411,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    from hub import run
+    run(main)
