@@ -1,0 +1,9 @@
+.venv/
+.venv-auto/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+captura_debug.png
+barra_*.png
