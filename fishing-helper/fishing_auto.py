@@ -14,6 +14,8 @@ from pynput import keyboard, mouse
 from cycle import FishingCycle, JumpTimer
 from telemetry import session_logger
 from vision_text import has_collect, has_disconnect
+from preferences import DEFAULTS, validate_settings
+from screen_mask import mask_overlay
 
 
 def objects(frame):
@@ -95,14 +97,25 @@ def find_bar(frame):
 def main(hub=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--auto-start', action='store_true')
-    parser.add_argument('--fps', type=int, default=90)
-    parser.add_argument('--lookahead', type=float, default=0.08)
-    parser.add_argument('--jump-interval', type=int, default=120)
+    parser.add_argument('--fps', type=int)
+    parser.add_argument('--lookahead', type=float)
+    parser.add_argument('--jump-interval', type=int)
     args = parser.parse_args()
-    if not 30 <= args.fps <= 120 or not 0 <= args.lookahead <= 0.3:
-        parser.error('Use fps de 30 a 120 e lookahead de 0 a 0.3.')
-    if not 0 <= args.jump_interval <= 3600:
-        parser.error('Use jump-interval de 0 a 3600 segundos; 0 desativa.')
+    initial_settings = hub.settings_snapshot() if hub else DEFAULTS.copy()
+    for field, value in [('target_fps', args.fps), ('lookahead', args.lookahead),
+                         ('jump_interval', args.jump_interval)]:
+        if value is not None:
+            initial_settings[field] = value
+    try:
+        initial_settings = validate_settings(initial_settings)
+    except ValueError as error:
+        parser.error(str(error))
+    if hub:
+        hub.apply_settings(initial_settings)
+
+    def settings():
+        return hub.settings_snapshot() if hub else initial_settings.copy()
+
     if sys.platform != 'win32':
         raise SystemExit('Execute no Windows.')
     cv2.setNumThreads(1)
@@ -117,7 +130,7 @@ def main(hub=None):
     user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
     logger = session_logger()
-    logger.info('Sessão iniciada: fps=%s intervalo_pulo=%s', args.fps, args.jump_interval)
+    logger.info('Sessão iniciada: fps=%s intervalo_pulo=%s', initial_settings['target_fps'], initial_settings['jump_interval'])
     print('Preparando controles...', flush=True)
     pointer = mouse.Controller()
     keys = keyboard.Controller()
@@ -138,7 +151,7 @@ def main(hub=None):
         if stopped.wait(0.2):
             return False
         if user32.GetForegroundWindow() != roblox:
-            report(status='Pausado', detail='Volte ao Roblox e pressione F8.')
+            report(status='Pausado', detail='Volte ao Roblox e use o atalho do perfil.')
             return False
         if move_pointer:
             rect = wintypes.RECT()
@@ -204,18 +217,28 @@ def main(hub=None):
             hub.increment('jumps')
         return True
 
+    ignored_keys = set()
+
     def on_press(key):
-        if key == keyboard.Key.esc:
+        if hub and hub.snapshot()['suspend_hotkeys']:
+            ignored_keys.add(str(key))
+            return
+        if str(key).removeprefix('Key.') == settings()['exit_hotkey']:
             stopped.set()
 
     def on_release(key):
-        if key == keyboard.Key.f8:
+        if str(key) in ignored_keys:
+            ignored_keys.discard(str(key))
+            return
+        if hub and hub.snapshot()['suspend_hotkeys']:
+            return
+        if str(key).removeprefix('Key.') == settings()['start_hotkey']:
             if active.is_set():
                 active.clear()
             else:
                 active.set()
             report(status='Iniciando' if active.is_set() else 'Pausado',
-                   detail='Aguardando o jogo.' if active.is_set() else 'Use Iniciar ou F8 para retomar.')
+                   detail='Aguardando o jogo.' if active.is_set() else 'Use Iniciar ou o atalho do perfil para retomar.')
             print('Ativo' if active.is_set() else 'Pausado', flush=True)
 
     def read_prompt():
@@ -297,8 +320,6 @@ def main(hub=None):
     worker.start()
     cycle = FishingCycle()
     jump_timer = JumpTimer(time.perf_counter())
-    if hub:
-        hub.update(jump_interval=args.jump_interval)
     box = None
     next_scan = 0.0
     previous = None
@@ -307,10 +328,10 @@ def main(hub=None):
     metric_frames = 0
     was_running = False
     last_phase = ''
-    report(status='Pausado', detail='Vara equipada? Use Iniciar ou F8.')
+    report(status='Pausado', detail='Vara equipada? Use Iniciar ou o atalho do perfil.')
 
     try:
-        if args.auto_start or getattr(sys, 'frozen', False):
+        if (args.auto_start or getattr(sys, 'frozen', False)) and settings()['auto_start']:
             report(status='Iniciando', detail='Início automático em 3 segundos. Esc cancela.')
             if stopped.wait(3):
                 return
@@ -319,6 +340,10 @@ def main(hub=None):
         with mss.mss() as capture:
             while not stopped.is_set():
                 started = time.perf_counter()
+                config = settings()
+                cycle.cast_timeout = config['cast_timeout']
+                cycle.collect_wait = config['collect_wait']
+                cycle.collect_timeout = config['collect_timeout']
                 if ocr_failed.is_set():
                     active.clear()
                     hold_mouse(False)
@@ -356,8 +381,8 @@ def main(hub=None):
                     was_running = False
                     if active.is_set() and not focused:
                         active.clear()
-                        report(status='Pausado', detail='Roblox perdeu o foco. Use Iniciar ou F8.')
-                    report(bar=False, inside=None, fps=0)
+                        report(status='Pausado', detail='Roblox perdeu o foco. Use Iniciar ou o atalho do perfil.')
+                    report(bar=False, inside=None, fps=0, track=None)
                     metric_frames = 0
                     metric_time = started
                     stopped.wait(0.03)
@@ -376,6 +401,8 @@ def main(hub=None):
                     continue
                 frame = np.array(capture.grab(dict(left=origin.x, top=origin.y,
                                                   width=rect.right, height=rect.bottom)))[:, :, :3].copy()
+                if hub:
+                    mask_overlay(frame, origin.x, origin.y, hub.snapshot()['overlay_rect'])
                 captured = time.perf_counter()
                 metric_frames += 1
                 elapsed = captured - metric_time
@@ -410,11 +437,12 @@ def main(hub=None):
                 if decision.phase != last_phase:
                     logger.info('Estado: %s -> %s', last_phase, decision.phase)
                     last_phase = decision.phase
-                report(bar=detected is not None,
+                report(track=(*detected, box[3]) if detected is not None and box else None,
+                       bar=detected is not None,
                        inside=None if detected is None else
                        detected[2] <= detected[0] - detected[1] / 2
                        and detected[0] + detected[1] / 2 <= detected[3])
-                interval = hub.snapshot()['jump_interval'] if hub else args.jump_interval
+                interval = config['jump_interval']
                 report(jump_remaining=max(0, interval - (now - jump_timer.last_jump)) if interval > 0 else -1)
                 hold_t(decision.hold_t and active.is_set() and not stopped.is_set())
                 if decision.action == 'pause':
@@ -445,7 +473,7 @@ def main(hub=None):
                             target_velocity = max(-600, min(600, (target - previous_target) / dt))
                     previous = (center, target, now)
                     target_lead = max(-bh / 2, min(bh / 2, target_velocity * 0.025))
-                    error = center + velocity * args.lookahead - target - target_lead
+                    error = center + velocity * config['lookahead'] - target - target_lead
                     band = max(1.5, (bottom - top - bh) * 0.08)
                     hold_mouse(active.is_set() and not stopped.is_set()
                                and (error > band or (held_mouse and error >= -band)))
@@ -463,7 +491,7 @@ def main(hub=None):
                         report(status='Aguardando', detail='Preparando próximo lançamento.')
                     else:
                         report(status='Procurando barra', detail='Aguardando o minigame aparecer.')
-                    interval = hub.snapshot()['jump_interval'] if hub else args.jump_interval
+                    interval = config['jump_interval']
                     safe_jump = decision.phase == 'cooldown' and decision.action != 'cast'
                     if jump_timer.due(now, interval, active.is_set(), focused, safe_jump):
                         if jump():
@@ -478,7 +506,7 @@ def main(hub=None):
                         logger.info('Vara lançada')
                         if hub:
                             hub.increment('casts')
-                stopped.wait(max(0, 1 / args.fps - (time.perf_counter() - started)))
+                stopped.wait(max(0, 1 / config['target_fps'] - (time.perf_counter() - started)))
     except Exception:
         logger.exception('Falha na execução')
         raise

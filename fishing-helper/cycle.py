@@ -56,7 +56,7 @@ class FishingCycle:
 
         if self.phase == 'collecting':
             if now - self.since >= self.collect_timeout:
-                return Decision(self.phase, 'pause', reason='Coleta não terminou em 45 segundos.')
+                return Decision(self.phase, 'pause', reason=f'Coleta não terminou em {self.collect_timeout} segundos.')
             if not relevant:
                 if self.stale_since is None:
                     self.stale_since = now
