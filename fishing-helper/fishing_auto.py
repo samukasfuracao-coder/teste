@@ -1,6 +1,5 @@
 import argparse
 import ctypes
-import math
 import sys
 import threading
 import time
@@ -17,6 +16,7 @@ from vision_text import has_collect, has_disconnect
 from preferences import DEFAULTS, validate_settings
 from screen_mask import mask_overlay
 from startup_input import StartupLockTap
+from tracking_control import track_step
 
 
 def objects(frame):
@@ -475,21 +475,10 @@ def main(hub=None):
                         hub.increment('unconfirmed')
                 if decision.phase == 'fishing' and detected is not None:
                     center, bh, top, bottom = detected
-                    target = (top + bottom) / 2
-                    target_velocity = 0.0
-                    if previous is not None:
-                        py, previous_target, pt = previous
-                        dt = now - pt
-                        if 0 < dt < 0.2:
-                            alpha = 1 - math.exp(-dt / 0.04)
-                            velocity += alpha * ((center - py) / dt - velocity)
-                            target_velocity = max(-600, min(600, (target - previous_target) / dt))
-                    previous = (center, target, now)
-                    target_lead = max(-bh / 2, min(bh / 2, target_velocity * 0.025))
-                    error = center + velocity * config['lookahead'] - target - target_lead
-                    band = max(1.5, (bottom - top - bh) * 0.08)
-                    hold_mouse(active.is_set() and not stopped.is_set()
-                               and (error > band or (held_mouse and error >= -band)))
+                    want, previous, velocity = track_step(
+                        center, bh, top, bottom, captured, previous,
+                        velocity, held_mouse, config['lookahead'])
+                    hold_mouse(active.is_set() and not stopped.is_set() and want)
                     report(status='Pescando', detail='Corrigindo o bloco dentro da zona.')
                 else:
                     hold_mouse(False)
