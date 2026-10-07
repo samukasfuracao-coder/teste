@@ -99,7 +99,7 @@ class FishingHub:
         self.start_button = ttk.Button(self.shell, text='Iniciar / pausar',
                                       style='Primary.TButton', command=self.toggle)
         self.start_button.pack(fill='x', pady=(0, 4), ipady=5)
-        self.author_label = ttk.Label(self.shell, text='by mukz', style='Subtitle.TLabel', anchor='center')
+        self.author_label = ttk.Label(self.shell, text='by mukz', style='Subtitle.TLabel', anchor='w')
         self.author_label.pack(fill='x', pady=(0, 12))
         self.notebook = ttk.Notebook(self.shell)
         self.pages = {}
@@ -453,22 +453,32 @@ class FishingHub:
         self.style.configure('Metric.TLabel', font=(self.font_family, round(20 * factor), 'bold'))
         self.style.configure('Status.TLabel', font=(self.font_family, round(17 * factor), 'bold'))
         self.style.configure('Eyebrow.TLabel', font=(self.font_family, round(8 * factor), 'bold'))
-        self.style.configure('Card.TLabelframe', background=p['card'], bordercolor=p['border'], relief='solid')
+        self.style.configure('Card.TLabelframe', background=p['card'], bordercolor=p['border'],
+                             lightcolor=p['border'], darkcolor=p['border'], borderwidth=1, relief='solid')
         self.style.configure('Card.TLabelframe.Label', background=p['card'], foreground=p['muted'],
                              font=(self.font_family, round(8 * factor), 'bold'))
-        self.style.configure('TNotebook', background=p['surface'], borderwidth=0)
-        self.style.configure('TNotebook.Tab', padding=(9, 8), background=p['card'], foreground=p['muted'])
+        self.style.configure('TNotebook', background=p['bg'], borderwidth=0,
+                             bordercolor=p['border'], lightcolor=p['border'], darkcolor=p['border'])
+        self.style.configure('TNotebook.Tab', padding=(9, 8), background=p['card'], foreground=p['muted'],
+                             borderwidth=0, bordercolor=p['bg'], lightcolor=p['card'], darkcolor=p['card'])
         self.style.map('TNotebook.Tab', background=[('selected', p['surface'])],
-                       foreground=[('selected', config['accent'])])
-        self.style.configure('TButton', background=p['card'], foreground=p['text'], padding=(10, 7), borderwidth=1)
+                       foreground=[('selected', config['accent'])],
+                       lightcolor=[('selected', p['surface'])], darkcolor=[('selected', p['surface'])])
+        self.style.configure('TButton', background=p['card'], foreground=p['text'], padding=(10, 7),
+                             borderwidth=1, bordercolor=p['border'], lightcolor=p['border'],
+                             darkcolor=p['border'], relief='flat')
         self.style.map('TButton', background=[('active', p['border'])])
         rgb = [int(config['accent'][i:i+2], 16) for i in (1, 3, 5)]
         ink = '#07111f' if sum(rgb) / 3 > 140 else '#ffffff'
         self.style.configure('Primary.TButton', background=config['accent'], foreground=ink,
-                             font=(self.font_family, round(11 * factor), 'bold'), padding=10)
+                             font=(self.font_family, round(11 * factor), 'bold'), padding=10,
+                             borderwidth=0, bordercolor=config['accent'], lightcolor=config['accent'],
+                             darkcolor=config['accent'], relief='flat')
         self.style.map('Primary.TButton', background=[('active', config['accent'])], foreground=[('active', ink)])
-        self.style.configure('TEntry', fieldbackground=p['bg'], foreground=p['text'], insertcolor=p['text'])
-        self.style.configure('TCombobox', fieldbackground=p['bg'], foreground=p['text'], arrowcolor=p['text'])
+        self.style.configure('TEntry', fieldbackground=p['bg'], foreground=p['text'], insertcolor=p['text'],
+                             bordercolor=p['border'], lightcolor=p['border'], darkcolor=p['border'])
+        self.style.configure('TCombobox', fieldbackground=p['bg'], foreground=p['text'], arrowcolor=p['text'],
+                             bordercolor=p['border'], lightcolor=p['border'], darkcolor=p['border'])
         self.style.map('TCombobox', fieldbackground=[('readonly', p['bg'])], foreground=[('readonly', p['text'])])
         for name in ('TCheckbutton', 'TRadiobutton'):
             self.style.configure(name, background=p['card'], foreground=p['text'])

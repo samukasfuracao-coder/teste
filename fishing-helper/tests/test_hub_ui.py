@@ -38,6 +38,7 @@ class HubUITests(unittest.TestCase):
     def test_branding_is_only_in_title_and_author_below_start(self):
         self.assertEqual(self.root.title(), 'Mukz auto fish')
         self.assertEqual(self.app.author_label.cget('text'), 'by mukz')
+        self.assertEqual(str(self.app.author_label.cget('anchor')), 'w')
         self.assertGreaterEqual(self.app.author_label.winfo_rooty(),
                                 self.app.start_button.winfo_rooty() + self.app.start_button.winfo_height())
 
@@ -50,6 +51,15 @@ class HubUITests(unittest.TestCase):
                  if widget.winfo_class() == 'TLabel']
         self.assertNotIn('PESCA AUTO', texts)
         self.assertNotIn('Pesca, coleta e controle em um só lugar.', texts)
+
+    def test_tab_strip_and_borders_match_theme_without_bright_bevels(self):
+        for theme in ('dark', 'light'):
+            self.state.apply_settings(self.state.settings_snapshot() | {'theme': theme})
+            self.app.apply_appearance()
+            palette = self.app.PALETTES[theme]
+            self.assertEqual(self.app.style.lookup('TNotebook', 'background'), palette['bg'])
+            self.assertEqual(self.app.style.lookup('TButton', 'lightcolor'), palette['border'])
+            self.assertEqual(self.app.style.lookup('Primary.TButton', 'borderwidth'), 0)
 
     def test_start_and_pause_buttons_use_engine_events(self):
         self.app.toggle()
