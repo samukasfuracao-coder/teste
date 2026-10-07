@@ -11,7 +11,8 @@ class HubState:
         self.lock = threading.Lock()
         self.data = dict(status='Preparando', detail='Carregando controles...',
                          bar=False, ocr='Carregando', fps=0, inside=None,
-                         casts=0, collections=0, mouse=False, collecting=False)
+                         casts=0, collections=0, mouse=False, collecting=False,
+                         unconfirmed=0, jumps=0, jump_interval=120, jump_remaining=120)
 
     def update(self, **values):
         with self.lock:
@@ -30,7 +31,7 @@ def run(engine):
     state = HubState()
     root = tk.Tk()
     root.title('Pesca Auto')
-    root.geometry('340x365+20+120')
+    root.geometry('340x465+20+120')
     root.resizable(False, False)
     root.configure(bg='#111827')
     root.attributes('-topmost', True)
@@ -48,6 +49,31 @@ def run(engine):
     performance = label('Captura: —  |  Bloco: —')
     inputs = label('Mouse solto  |  T solto')
     totals = label('Lançamentos: 0  |  Coletas detectadas: 0')
+    attempts = label('Sem confirmação: 0  |  Pulos: 0')
+    jump_status = label('Próximo pulo: 120 s')
+    settings = tk.Frame(root, bg='#111827')
+    settings.pack(pady=4)
+    tk.Label(settings, text='Pular a cada (s):', bg='#111827',
+             fg='#cbd5e1', font=('Segoe UI', 10)).pack(side='left', padx=5)
+    interval = tk.StringVar(value='120')
+
+    def set_interval(event=None):
+        try:
+            value = int(interval.get())
+            if not 0 <= value <= 3600:
+                raise ValueError()
+        except ValueError:
+            interval.set(str(state.snapshot()['jump_interval']))
+            return
+        state.update(jump_interval=value)
+
+    interval_entry = tk.Spinbox(settings, from_=0, to=3600, increment=30,
+                                textvariable=interval, width=6,
+                                command=set_interval)
+    interval_entry.pack(side='left')
+    interval_entry.bind('<Return>', set_interval)
+    interval_entry.bind('<FocusOut>', set_interval)
+    label('0 desativa • Pulo entre pescas, com o jogo em foco', 9)
     buttons = tk.Frame(root, bg='#111827')
     buttons.pack(pady=8)
 
@@ -86,7 +112,7 @@ def run(engine):
             return
         data = state.snapshot()
         colors = {'Pescando': '#4ade80', 'Coletando': '#4ade80',
-                  'Pausado': '#fbbf24', 'Erro': '#f87171'}
+                  'Pausado': '#fbbf24', 'Erro': '#f87171', 'Desconectado': '#f87171'}
         status.configure(text=data['status'], fg=colors.get(data['status'], '#60a5fa'))
         detail.configure(text=data['detail'])
         detection.configure(text=f"Barra: {'detectada' if data['bar'] else 'não detectada'}  |  OCR: {data['ocr']}")
@@ -94,6 +120,14 @@ def run(engine):
         performance.configure(text=f"Captura: {data['fps']:.0f} FPS  |  Bloco: {inside}")
         inputs.configure(text=f"Mouse {'segurado' if data['mouse'] else 'solto'}  |  T {'segurado' if data['collecting'] else 'solto'}")
         totals.configure(text=f"Lançamentos: {data['casts']}  |  Coletas detectadas: {data['collections']}")
+        attempts.configure(text=f"Sem confirmação: {data['unconfirmed']}  |  Pulos: {data['jumps']}")
+        remaining = data['jump_remaining']
+        text = ('Pulo desativado' if data['jump_interval'] == 0 else
+                'Pulo aguardando intervalo entre pescas' if remaining <= 0 else
+                f"Próximo pulo: {remaining:.0f} s")
+        jump_status.configure(text=text)
+        if root.focus_get() != interval_entry:
+            interval.set(str(data['jump_interval']))
         root.after(100, refresh)
 
     root.after(100, refresh)

@@ -11,6 +11,10 @@ import mss
 import numpy as np
 from pynput import keyboard, mouse
 
+from cycle import FishingCycle, JumpTimer
+from telemetry import session_logger
+from vision_text import has_collect, has_disconnect
+
 
 def objects(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -93,9 +97,12 @@ def main(hub=None):
     parser.add_argument('--auto-start', action='store_true')
     parser.add_argument('--fps', type=int, default=90)
     parser.add_argument('--lookahead', type=float, default=0.08)
+    parser.add_argument('--jump-interval', type=int, default=120)
     args = parser.parse_args()
     if not 30 <= args.fps <= 120 or not 0 <= args.lookahead <= 0.3:
         parser.error('Use fps de 30 a 120 e lookahead de 0 a 0.3.')
+    if not 0 <= args.jump_interval <= 3600:
+        parser.error('Use jump-interval de 0 a 3600 segundos; 0 desativa.')
     if sys.platform != 'win32':
         raise SystemExit('Execute no Windows.')
     cv2.setNumThreads(1)
@@ -109,6 +116,8 @@ def main(hub=None):
     user32.FindWindowW.restype = wintypes.HWND
     user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    logger = session_logger()
+    logger.info('Sessão iniciada: fps=%s intervalo_pulo=%s', args.fps, args.jump_interval)
     print('Preparando controles...', flush=True)
     pointer = mouse.Controller()
     keys = keyboard.Controller()
@@ -145,7 +154,14 @@ def main(hub=None):
     prompt_lock = threading.Lock()
     prompt_time = 0.0
     prompt_visible = False
+    prompt_sequence = 0
+    frame_time = 0.0
+    request_phase = 'idle'
+    disconnected = threading.Event()
+    held_space = False
     ocr_failed = threading.Event()
+    ocr_stop = threading.Event()
+    session_epoch = 0
 
     def hold_mouse(want):
         nonlocal held_mouse
@@ -167,6 +183,27 @@ def main(hub=None):
             held_t = want
             report(collecting=want)
 
+    def jump():
+        nonlocal held_space
+        if not active.is_set() or stopped.is_set():
+            return False
+        hwnd = user32.GetForegroundWindow()
+        title = ctypes.create_unicode_buffer(512)
+        user32.GetWindowTextW(hwnd, title, 512)
+        if 'roblox' not in title.value.lower():
+            return False
+        try:
+            keys.press(keyboard.Key.space)
+            held_space = True
+            stopped.wait(0.08)
+        finally:
+            keys.release(keyboard.Key.space)
+            held_space = False
+        logger.info('Pulo periódico enviado')
+        if hub:
+            hub.increment('jumps')
+        return True
+
     def on_press(key):
         if key == keyboard.Key.esc:
             stopped.set()
@@ -182,7 +219,7 @@ def main(hub=None):
             print('Ativo' if active.is_set() else 'Pausado', flush=True)
 
     def read_prompt():
-        nonlocal prompt_time, prompt_visible
+        nonlocal prompt_time, prompt_visible, prompt_sequence
         try:
             from rapidocr_onnxruntime import RapidOCR
             ocr = RapidOCR()
@@ -194,12 +231,16 @@ def main(hub=None):
             ocr_failed.set()
             active.clear()
             return
-        while not stopped.is_set():
+        last_fallback = 0.0
+        while not stopped.is_set() and not ocr_stop.is_set():
             if not active.is_set():
                 stopped.wait(0.1)
                 continue
             with screen_lock:
                 image = latest
+                source_time = frame_time
+                phase = request_phase
+                source_epoch = session_epoch
             if image is None:
                 stopped.wait(0.1)
                 continue
@@ -215,13 +256,37 @@ def main(hub=None):
                     interpolation=cv2.INTER_CUBIC,
                 )
                 results, _ = ocr(small)
-                found = any('collect' in str(r[1]).lower() and float(r[2]) >= 0.55
-                            for r in (results or []))
+                found = has_collect(results)
+                connection_lost = has_disconnect(results)
+                now = time.perf_counter()
+                if (not found and phase != 'fishing'
+                        and now - last_fallback >= 2.0):
+                    wide = image[
+                        int(height * 0.10):int(height * 0.85),
+                        int(width * 0.15):int(width * 0.85),
+                    ]
+                    wide = cv2.resize(wide, None, fx=1.5, fy=1.5,
+                                      interpolation=cv2.INTER_CUBIC)
+                    alternate, _ = ocr(wide)
+                    found = has_collect(alternate)
+                    connection_lost = connection_lost or has_disconnect(alternate)
+                    last_fallback = time.perf_counter()
+                with screen_lock:
+                    if source_epoch != session_epoch or not active.is_set():
+                        continue
+                if connection_lost:
+                    disconnected.set()
+                    active.clear()
+                    logger.warning('Aviso de desconexão reconhecido; pausando')
+                    report(status='Desconectado', detail='Reconecte ao jogo antes de iniciar novamente.')
                 with prompt_lock:
                     prompt_visible = found
-                    prompt_time = time.perf_counter()
+                    # Freshness refers to capture time, not OCR completion time.
+                    prompt_time = source_time
+                    prompt_sequence += 1
             except Exception as exc:
                 report(status='Erro', detail=str(exc), ocr='Erro')
+                logger.exception('Falha no OCR')
                 print('Falha no OCR; pausando:', exc, flush=True)
                 active.clear()
             stopped.wait(0.15)
@@ -230,24 +295,23 @@ def main(hub=None):
     worker = threading.Thread(target=read_prompt, daemon=True)
     listener.start()
     worker.start()
-    state = 'idle'
+    cycle = FishingCycle()
+    jump_timer = JumpTimer(time.perf_counter())
+    if hub:
+        hub.update(jump_interval=args.jump_interval)
     box = None
-    last_seen = 0.0
-    next_cast = 0.0
     next_scan = 0.0
     previous = None
     velocity = 0.0
-    collecting_since = 0.0
-    absent_since = None
     metric_time = time.perf_counter()
     metric_frames = 0
+    was_running = False
+    last_phase = ''
     report(status='Pausado', detail='Vara equipada? Use Iniciar ou F8.')
-    print('Vara equipada, Roblox em foco. F8 inicia/pausa; Esc encerra.', flush=True)
 
     try:
         if args.auto_start or getattr(sys, 'frozen', False):
             report(status='Iniciando', detail='Início automático em 3 segundos. Esc cancela.')
-            print('Inicio automatico em 3 segundos. Esc cancela.', flush=True)
             if stopped.wait(3):
                 return
             if not ocr_failed.is_set() and focus_game(move_pointer=True):
@@ -265,149 +329,167 @@ def main(hub=None):
                 if hub and hub.start_requested.is_set():
                     hub.start_requested.clear()
                     if focus_game(move_pointer=True):
+                        disconnected.clear()
                         active.set()
-                # Read only the Roblox client area, without selecting an ROI.
-                user32 = ctypes.windll.user32
                 hwnd = user32.GetForegroundWindow()
                 title = ctypes.create_unicode_buffer(512)
                 user32.GetWindowTextW(hwnd, title, 512)
                 focused = 'roblox' in title.value.lower()
+                if disconnected.is_set():
+                    active.clear()
+                    report(status='Desconectado', detail='Reconecte ao jogo e use Iniciar.')
                 if not active.is_set() or not focused:
                     hold_mouse(False)
                     hold_t(False)
-                    state, box, previous = 'idle', None, None
+                    if was_running:
+                        logger.info('Execução pausada: foco=%s desconectado=%s', focused, disconnected.is_set())
+                    cycle.reset()
+                    box = previous = None
                     velocity = 0.0
-                    next_cast = next_scan = 0.0
-                    absent_since = None
+                    next_scan = 0.0
                     with screen_lock:
                         latest = None
+                        if was_running:
+                            session_epoch += 1
                     with prompt_lock:
                         prompt_time = 0.0
+                    was_running = False
                     if active.is_set() and not focused:
                         active.clear()
                         report(status='Pausado', detail='Roblox perdeu o foco. Use Iniciar ou F8.')
-                        print('Pausado: Roblox perdeu o foco. Use F8 para retomar.', flush=True)
                     report(bar=False, inside=None, fps=0)
                     metric_frames = 0
                     metric_time = started
                     stopped.wait(0.03)
                     continue
+                if not was_running:
+                    jump_timer.performed(started)
+                    logger.info('Execução retomada')
+                    was_running = True
                 rect = wintypes.RECT()
                 origin = wintypes.POINT(0, 0)
                 user32.GetClientRect(hwnd, ctypes.byref(rect))
                 user32.ClientToScreen(hwnd, ctypes.byref(origin))
                 if rect.right <= 0 or rect.bottom <= 0:
                     active.clear()
+                    report(status='Pausado', detail='Janela do Roblox indisponível.')
                     continue
                 frame = np.array(capture.grab(dict(left=origin.x, top=origin.y,
                                                   width=rect.right, height=rect.bottom)))[:, :, :3].copy()
+                captured = time.perf_counter()
                 metric_frames += 1
-                elapsed = started - metric_time
+                elapsed = captured - metric_time
                 if elapsed >= 0.5:
                     report(fps=metric_frames / elapsed)
                     metric_frames = 0
-                    metric_time = started
+                    metric_time = captured
                 with screen_lock:
                     latest = frame
+                    frame_time = captured
+                    request_phase = cycle.phase
                 with prompt_lock:
-                    stamp, visible = prompt_time, prompt_visible
-                fresh = stamp > 0 and started - stamp < 2.0
+                    stamp, visible, sequence = prompt_time, prompt_visible, prompt_sequence
                 detected = None
                 if box is not None:
                     x, y, w, h = box
                     crop = frame[y:y+h, x:x+w]
                     if crop.shape[:2] == (h, w):
                         detected = objects(crop)
-                if detected is None and started >= next_scan:
-                    box = find_bar(frame)
-                    next_scan = started + 0.10
-                    if box is not None:
+                if detected is None and captured >= next_scan:
+                    new_box = find_bar(frame)
+                    next_scan = captured + 0.10
+                    if new_box is not None:
+                        if new_box != box:
+                            previous = None
+                            velocity = 0.0
+                        box = new_box
                         x, y, w, h = box
                         detected = objects(frame[y:y+h, x:x+w])
-                        previous = None
-                        velocity = 0.0
-                        print('Barra localizada.', flush=True)
-
-                report(bar=detected is not None, inside=None if detected is None else detected[2] <= detected[0] - detected[1] / 2 and detected[0] + detected[1] / 2 <= detected[3])
-
-                if fresh and visible and detected is None:
-                    if state != 'collecting':
-                        collecting_since = started
-                        print('Coletando com T...', flush=True)
-                    state = 'collecting'
+                now = time.perf_counter()
+                decision = cycle.step(now, detected is not None, stamp, sequence, visible)
+                if decision.phase != last_phase:
+                    logger.info('Estado: %s -> %s', last_phase, decision.phase)
+                    last_phase = decision.phase
+                report(bar=detected is not None,
+                       inside=None if detected is None else
+                       detected[2] <= detected[0] - detected[1] / 2
+                       and detected[0] + detected[1] / 2 <= detected[3])
+                interval = hub.snapshot()['jump_interval'] if hub else args.jump_interval
+                report(jump_remaining=max(0, interval - (now - jump_timer.last_jump)) if interval > 0 else -1)
+                hold_t(decision.hold_t and active.is_set() and not stopped.is_set())
+                if decision.action == 'pause':
+                    active.clear()
                     hold_mouse(False)
-                    hold_t(True)
-                    absent_since = None
-
-                if state == 'collecting':
-                    report(status='Coletando', detail='Segurando T enquanto Collect estiver visível.')
-                    hold_mouse(False)
-                    if not fresh:
-                        hold_t(False)
-                        active.clear()
-                        report(status='Pausado', detail='Reconhecimento de coleta atrasou.')
-                        print('Pausado: reconhecimento de coleta atrasou.', flush=True)
-                    elif not visible:
-                        hold_t(False)
-                        if absent_since is None:
-                            absent_since = started
-                        elif started - absent_since >= 0.8:
-                            state = 'cooldown'
-                            next_cast = started + 2.0
-                            if hub:
-                                hub.increment('collections')
-                    if started - collecting_since > 15:
-                        hold_t(False)
-                        active.clear()
-                        report(status='Pausado', detail='Coleta excedeu 15 segundos.')
-                        print('Pausado: coleta excedeu 15 segundos.', flush=True)
-                elif detected is not None:
                     hold_t(False)
-                    state = 'fishing'
-                    report(status='Pescando', detail='Corrigindo o bloco dentro da zona.')
-                    last_seen = started
+                    report(status='Pausado', detail=decision.reason)
+                    logger.warning(decision.reason)
+                    continue
+                if decision.action == 'collection_done':
+                    logger.info('Coleta detectada: Collect ausente em leituras consecutivas')
+                    if hub:
+                        hub.increment('collections')
+                elif decision.action in ('no_collection', 'retry'):
+                    logger.warning('Ciclo sem confirmação: %s', decision.action)
+                    if hub:
+                        hub.increment('unconfirmed')
+                if decision.phase == 'fishing' and detected is not None:
                     center, bh, top, bottom = detected
                     target = (top + bottom) / 2
                     target_velocity = 0.0
                     if previous is not None:
                         py, previous_target, pt = previous
-                        dt = started - pt
+                        dt = now - pt
                         if 0 < dt < 0.2:
                             alpha = 1 - math.exp(-dt / 0.04)
                             velocity += alpha * ((center - py) / dt - velocity)
                             target_velocity = max(-600, min(600, (target - previous_target) / dt))
-                    previous = (center, target, started)
+                    previous = (center, target, now)
                     target_lead = max(-bh / 2, min(bh / 2, target_velocity * 0.025))
                     error = center + velocity * args.lookahead - target - target_lead
                     band = max(1.5, (bottom - top - bh) * 0.08)
                     hold_mouse(active.is_set() and not stopped.is_set()
                                and (error > band or (held_mouse and error >= -band)))
+                    report(status='Pescando', detail='Corrigindo o bloco dentro da zona.')
                 else:
                     hold_mouse(False)
-                    hold_t(False)
                     previous = None
                     velocity = 0.0
-                    if state == 'fishing' and started - last_seen > 4:
-                        state = 'cooldown'
-                        next_cast = started + 2.0
-                    report(status='Aguardando' if state == 'cooldown' else 'Procurando barra',
-                           detail='Preparando próximo lançamento.' if state == 'cooldown' else 'Aguardando o minigame aparecer.')
-                    if (state in ('idle', 'cooldown') and started >= next_cast
-                            and (fresh or state == 'idle') and not (fresh and visible)
-                            and active.is_set() and not stopped.is_set()):
+                    if decision.phase == 'collecting':
+                        report(status='Coletando', detail=decision.reason or
+                               'Segurando T; confirmando o desaparecimento de Collect.')
+                    elif decision.phase == 'waiting_collect':
+                        report(status='Buscando coleta', detail='Aguardando o aviso antes de lançar novamente.')
+                    elif decision.phase == 'cooldown':
+                        report(status='Aguardando', detail='Preparando próximo lançamento.')
+                    else:
+                        report(status='Procurando barra', detail='Aguardando o minigame aparecer.')
+                    interval = hub.snapshot()['jump_interval'] if hub else args.jump_interval
+                    safe_jump = decision.phase == 'cooldown' and decision.action != 'cast'
+                    if jump_timer.due(now, interval, active.is_set(), focused, safe_jump):
+                        if jump():
+                            jump_timer.performed(time.perf_counter())
+                            cycle.next_cast = max(cycle.next_cast, time.perf_counter() + 0.5)
+                    remaining = max(0, interval - (now - jump_timer.last_jump)) if interval > 0 else -1
+                    report(jump_remaining=remaining)
+                    if decision.action == 'cast' and active.is_set() and not stopped.is_set():
                         hold_mouse(True)
                         stopped.wait(0.05)
                         hold_mouse(False)
-                        state = 'waiting'
+                        logger.info('Vara lançada')
                         if hub:
                             hub.increment('casts')
-                        print('Vara lancada. Procurando a barra...', flush=True)
                 stopped.wait(max(0, 1 / args.fps - (time.perf_counter() - started)))
+    except Exception:
+        logger.exception('Falha na execução')
+        raise
     finally:
-        stopped.set()
+        ocr_stop.set()
         hold_mouse(False)
         hold_t(False)
+        if held_space:
+            keys.release(keyboard.Key.space)
         listener.stop()
+        logger.info('Sessão encerrada')
 
 
 if __name__ == '__main__':

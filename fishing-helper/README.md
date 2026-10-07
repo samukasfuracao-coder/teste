@@ -15,7 +15,7 @@ Se voce ja tem `.venv-auto`, basta atualizar os arquivos do programa e instalar 
 
 O programa abre um painel flutuante com estado atual, barra detectada, OCR carregando/pronto, FPS medido, bloco dentro/fora da zona e entradas de mouse/T. Os botoes Iniciar, Pausar e Encerrar complementam F8/Esc. Iniciar tenta focar o Roblox e posiciona o ponteiro numa area do jogo para nao clicar no proprio painel. Coloque o painel fora da barra e do aviso Collect; o local inicial fica no canto esquerdo. Perda de foco continua pausando. O contador de coletas registra o desaparecimento do aviso apos T, nao confirma inventario ou identifica o item.
 
-Ao atualizar, copie tambem **hub.py** para a mesma pasta de fishing_auto.py. Para atualizar um EXE ja gerado, execute gerar_exe.bat novamente. O novo executavel usa o painel sem janela de console. A interface e a integracao com o jogo ainda precisam de validacao no Windows.
+Ao atualizar, copie todos os arquivos Python, incluindo **hub.py**, **cycle.py**, **vision_text.py** e **telemetry.py**, para a mesma pasta de fishing_auto.py. Preserve `.venv-auto`. Para atualizar um EXE ja gerado, feche o app e execute gerar_exe.bat novamente. O novo executavel usa o painel sem janela de console. Se houver **icone.ico** junto do script, o icone sera incluido automaticamente. A interface e a integracao com o jogo ainda precisam de validacao no Windows.
 
 A versao atual aceita `--auto-start`: inicia em tres segundos e tenta focar a janela de titulo Roblox. Deixe o jogo aberto, a vara equipada e o ponteiro no local usado para pescar. Perda de foco pausa; F8 retoma e Esc encerra. Execute `iniciar_auto.bat` com dois cliques para usar o ambiente `.venv-auto` existente. O primeiro lancamento nao espera a inicializacao do OCR, que ocorre em paralelo. A coleta continua dependendo do OCR.
 
@@ -26,7 +26,23 @@ O controlador usa por padrao ate 90 capturas por segundo, suavizacao da velocida
 Para iniciar manualmente, execute `.venv-auto\Scripts\python.exe fishing_auto.py`.
 Nao precisa selecionar a barra. Deixe o Roblox em foco com a vara equipada e o ponteiro onde o jogo recebe o clique; F8 inicia/pausa e Esc encerra. O programa captura a area da janela em foco cujo titulo contem Roblox, procura a barra de borda branca com bloco branco e zona verde/amarela e controla o clique. Reconhece a palavra inglesa Collect por OCR para segurar T; solta quando o aviso desaparece. O nome e a aparencia do peixe nao sao usados.
 
-A busca da barra e a coleta ainda precisam de validacao no Windows/Roblox. O primeiro minigame pode ser perdido enquanto a barra e localizada. Mantenha a interface em ingles. Perda de foco pausa e solta os controles. Coleta com mais de 15 segundos ou OCR atrasado pausa; ajuste somente depois de observar o comportamento. Se nao houver fisgada, nao repete cliques enquanto aguarda; pause/retome com F8 para tentar novamente. Nao ha garantia de reconhecimento em outras cores, escalas ou layouts. Nao requer Tesseract separado.
+A busca da barra e a coleta ainda precisam de validacao no Windows/Roblox. O primeiro minigame pode ser perdido enquanto a barra e localizada. Mantenha a interface em ingles. Perda de foco pausa e solta os controles. Nao ha garantia de reconhecimento em outras cores, escalas ou layouts. Nao requer Tesseract separado.
+
+### Coleta, pulo periodico e diagnostico
+
+Depois que a barra some, o programa espera ate 12 segundos pelo aviso de coleta antes de preparar outro lancamento. O OCR procura primeiro na area central e, se necessario, amplia a busca; reconhece pequenas variacoes de leitura de Collect. Ao coletar, mantem T pressionado durante falhas curtas do OCR. So registra uma coleta depois de pelo menos tres leituras distintas sem o aviso, cobrindo 1,5 segundo. Isso confirma o desaparecimento do aviso, nao a entrada do item no inventario. Coleta que exceda 45 segundos ou OCR desatualizado por muito tempo pausa com motivo no hub.
+
+O pulo periodico usa Espaco e vem ativado com intervalo de **120 segundos**. Altere o campo "Pular a cada (s)" no hub e confirme com Enter, ou use `--jump-interval 180` no terminal. `0` desativa. O pulo e adiado ate o intervalo entre pescas, sem barra ou coleta em andamento; nao envia teclas com o app pausado ou sem foco no Roblox. Isso tenta manter atividade, mas nao garante que o servidor deixara de desconectar por inatividade e nao impede desconexoes de rede. Nao faz reconexao automatica. Um aviso de desconexao reconhecido pelo OCR pausa a automacao; reconecte e use Iniciar.
+
+Se nao aparecer minigame por 45 segundos depois do lancamento, uma leitura recente sem Collect permite uma nova tentativa apos uma pequena espera. Pescas sem aviso de coleta e tentativas sem barra entram no contador **Sem confirmacao**, separado de coletas detectadas. Esse contador nao prova que um item foi perdido.
+
+O registro de estados, tentativas, pulos e erros fica em `%LOCALAPPDATA%\PescaAuto\pesca.log`, com rotacao para limitar o tamanho. Nao grava capturas de tela nem o texto completo reconhecido. Para analisar uma falha, anote o horario e consulte esse arquivo. As mudancas foram testadas em cenarios simulados; comportamento prolongado, pulos e coleta precisam ser confirmados no jogo.
+
+Os testes de temporizacao e reconhecimento de texto podem ser executados sem o jogo:
+
+```bat
+py -3.12 -m unittest discover -s tests -v
+```
 
 ## Modo com selecao manual
 
