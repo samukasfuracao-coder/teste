@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 
 from preferences import DEFAULTS, ProfileStore, validate_settings
+from window_icon import apply_window_icon, prepare_app_identity
 
 
 class HubState:
@@ -560,7 +561,9 @@ def run(engine):
     state = HubState(store.current())
     if os.name == 'nt':
         ctypes.windll.user32.SetProcessDPIAware()
+    prepare_app_identity()
     root = tk.Tk()
+    apply_window_icon(root)
     app = FishingHub(root, state, store)
 
     def work():
