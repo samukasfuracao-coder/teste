@@ -19,6 +19,7 @@ from startup_input import StartupLockTap
 from tracking_control import track_step
 from prompt_reader import read_central_prompt
 from collect_input import CollectionHold
+from windows_input import CollectKey
 
 
 def objects(frame):
@@ -137,6 +138,7 @@ def main(hub=None):
     print('Preparando controles...', flush=True)
     pointer = mouse.Controller()
     keys = keyboard.Controller()
+    collect_key = CollectKey()
     active = hub.active if hub else threading.Event()
     stopped = hub.stopped if hub else threading.Event()
 
@@ -192,10 +194,7 @@ def main(hub=None):
     def hold_t(want):
         nonlocal held_t
         if want != held_t:
-            if want:
-                keys.press('t')
-            else:
-                keys.release('t')
+            collect_key.send(want)
             held_t = want
             report(collecting=want)
 
