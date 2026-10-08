@@ -137,7 +137,7 @@ class FishingHub:
         metrics = ttk.Frame(page, style='Page.TFrame')
         metrics.pack(fill='x', pady=(0, 10))
         for index, (key, title) in enumerate([('casts', 'Lançamentos'), ('collections', 'Coletas'),
-                                            ('unconfirmed', 'Sem confirmação'), ('jumps', 'Pulos')]):
+                                            ('unconfirmed', 'Sem coleta'), ('jumps', 'Pulos')]):
             metrics.columnconfigure(index, weight=1, uniform='metric')
             frame = self.card(metrics, title)
             frame.grid(row=0, column=index, sticky='nsew', padx=(0 if index == 0 else 5, 0))
@@ -276,7 +276,9 @@ class FishingHub:
         frame = self.card(page, 'DIAGNÓSTICO')
         frame.pack(fill='x')
         ttk.Label(frame, text=('Coletas são confirmadas pelo desaparecimento do aviso, não pelo inventário. '
-                              '“Sem confirmação” pode incluir pescas perdidas.\n\n'
+                              '“Sem coleta” inclui resultados sem item, pescas perdidas e '
+                              'tentativas sem aviso reconhecido. Não é um contador de erros '
+                              'nem permite calcular a taxa de sucesso da pesca.\n\n'
                               'Os pulos não garantem que o servidor evite desconexões.'),
                   wraplength=420, style='Card.TLabel', justify='left').pack(anchor='w', pady=(0, 10))
         ttk.Button(frame, text='Abrir registro de erros e eventos', command=self.open_log).pack(anchor='w')

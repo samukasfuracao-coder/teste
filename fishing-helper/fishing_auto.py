@@ -465,7 +465,10 @@ def main(hub=None):
                     if hub:
                         hub.increment('collections')
                 elif decision.action in ('no_collection', 'retry'):
-                    logger.warning('Ciclo sem confirmação: %s', decision.action)
+                    if decision.action == 'no_collection':
+                        logger.info('Ciclo sem coleta detectada: pode ser resultado sem item ou aviso não reconhecido')
+                    else:
+                        logger.warning('Lançamento repetido: minigame não detectado no prazo')
                     if hub:
                         hub.increment('unconfirmed')
                 if decision.phase == 'fishing' and detected is not None:
