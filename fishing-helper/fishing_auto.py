@@ -18,6 +18,7 @@ from screen_mask import mask_overlay
 from startup_input import StartupLockTap
 from tracking_control import track_step
 from prompt_reader import read_central_prompt
+from collect_input import CollectionHold
 
 
 def objects(frame):
@@ -311,6 +312,7 @@ def main(hub=None):
     listener.start()
     worker.start()
     cycle = FishingCycle()
+    collection_hold = CollectionHold()
     jump_timer = JumpTimer(time.perf_counter())
     startup_lock = StartupLockTap()
     box = None
@@ -359,6 +361,7 @@ def main(hub=None):
                 if not active.is_set() or not focused:
                     hold_mouse(False)
                     hold_t(False)
+                    collection_hold.reset()
                     if was_running:
                         logger.info('Execução pausada: foco=%s desconectado=%s', focused, disconnected.is_set())
                     cycle.reset()
@@ -448,7 +451,13 @@ def main(hub=None):
                        and detected[0] + detected[1] / 2 <= detected[3])
                 interval = config['jump_interval']
                 report(jump_remaining=max(0, interval - (now - jump_timer.last_jump)) if interval > 0 else -1)
-                hold_t(decision.hold_t and active.is_set() and not stopped.is_set())
+                requested_t = decision.hold_t and active.is_set() and not stopped.is_set()
+                want_t, retry_t = collection_hold.step(
+                    now, requested_t, visible and 0 <= now - stamp <= 5)
+                hold_t(want_t)
+                if retry_t:
+                    logger.warning('Aviso de coleta persiste; reiniciando T (tentativa %s)',
+                                   collection_hold.retries)
                 if decision.action == 'pause':
                     active.clear()
                     hold_mouse(False)
