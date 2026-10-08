@@ -17,6 +17,7 @@ from preferences import DEFAULTS, validate_settings
 from screen_mask import mask_overlay
 from startup_input import StartupLockTap
 from tracking_control import track_step
+from prompt_reader import read_central_prompt
 
 
 def objects(frame):
@@ -271,17 +272,7 @@ def main(hub=None):
             try:
                 # Search the whole Roblox window; fish name is irrelevant.
                 height, width = image.shape[:2]
-                central = image[
-                    int(height * 0.25):int(height * 0.65),
-                    int(width * 0.35):int(width * 0.65),
-                ]
-                small = cv2.resize(
-                    central, None, fx=2, fy=2,
-                    interpolation=cv2.INTER_CUBIC,
-                )
-                results, _ = ocr(small)
-                found = has_collect(results)
-                connection_lost = has_disconnect(results)
+                found, connection_lost = read_central_prompt(ocr, image, phase)
                 now = time.perf_counter()
                 if (not found and phase != 'fishing'
                         and now - last_fallback >= 2.0):
