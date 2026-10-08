@@ -8,6 +8,21 @@ from vision_text import has_collect, has_disconnect
 
 
 class CycleTests(unittest.TestCase):
+    def test_brief_detection_loss_does_not_end_fishing(self):
+        cycle = FishingCycle()
+        cycle.step(10, True)
+        self.assertEqual(cycle.step(10.08, False).phase, 'fishing')
+        self.assertEqual(cycle.step(10.14, False).phase, 'fishing')
+        self.assertEqual(cycle.step(10.16, False).phase, 'waiting_collect')
+
+    def test_recovered_detection_starts_new_grace_window(self):
+        cycle = FishingCycle()
+        cycle.step(10, True)
+        cycle.step(10.1, False)
+        cycle.step(10.12, True)
+        self.assertEqual(cycle.step(10.22, False).phase, 'fishing')
+        self.assertEqual(cycle.step(10.28, False).phase, 'waiting_collect')
+
     def collecting(self):
         cycle = FishingCycle()
         self.assertEqual(cycle.step(10, True).phase, 'fishing')

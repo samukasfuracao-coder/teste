@@ -475,6 +475,12 @@ def main(hub=None):
                         velocity, held_mouse, config['lookahead'])
                     hold_mouse(active.is_set() and not stopped.is_set() and want)
                     report(status='Pescando', detail='Corrigindo o bloco dentro da zona.')
+                elif decision.phase == 'fishing':
+                    # cycle.step bounds this to 150 ms after the last detection.
+                    # Keep the current mouse state, without using stale velocity.
+                    previous = None
+                    velocity = 0.0
+                    report(status='Pescando', detail=decision.reason)
                 else:
                     hold_mouse(False)
                     previous = None

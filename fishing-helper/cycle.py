@@ -42,6 +42,10 @@ class FishingCycle:
             return Decision(self.phase)
 
         if self.phase == 'fishing':
+            # A single missed image is not the end of a minigame. Keep the
+            # last input briefly; never extend this window with missing frames.
+            if now - self.last_bar < 0.15:
+                return Decision(self.phase, reason='Detecção interrompida brevemente.')
             self.phase = 'waiting_collect'
             self.since = now
 
