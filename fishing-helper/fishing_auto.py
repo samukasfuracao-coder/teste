@@ -8,7 +8,7 @@ from ctypes import wintypes
 import cv2
 import mss
 import numpy as np
-from pynput import keyboard, mouse
+from pynput import keyboard
 
 from cycle import FishingCycle, JumpTimer
 from telemetry import session_logger
@@ -19,7 +19,7 @@ from startup_input import StartupLockTap
 from tracking_control import track_step
 from prompt_reader import read_central_prompt
 from collect_input import CollectionHold
-from windows_input import CollectKey
+from windows_input import WindowsInput
 
 
 def objects(frame):
@@ -136,9 +136,7 @@ def main(hub=None):
     logger = session_logger()
     logger.info('Sessão iniciada: fps=%s intervalo_pulo=%s', initial_settings['target_fps'], initial_settings['jump_interval'])
     print('Preparando controles...', flush=True)
-    pointer = mouse.Controller()
-    keys = keyboard.Controller()
-    collect_key = CollectKey()
+    inputs = WindowsInput()
     active = hub.active if hub else threading.Event()
     stopped = hub.stopped if hub else threading.Event()
 
@@ -163,7 +161,7 @@ def main(hub=None):
             user32.GetClientRect(roblox, ctypes.byref(rect))
             point = wintypes.POINT(int(rect.right * 0.5), int(rect.bottom * 0.75))
             user32.ClientToScreen(roblox, ctypes.byref(point))
-            pointer.position = (point.x, point.y)
+            inputs.move(point.x, point.y)
         return True
     held_mouse = False
     held_t = False
@@ -184,17 +182,14 @@ def main(hub=None):
     def hold_mouse(want):
         nonlocal held_mouse
         if want != held_mouse:
-            if want:
-                pointer.press(mouse.Button.left)
-            else:
-                pointer.release(mouse.Button.left)
+            inputs.left_mouse(want)
             held_mouse = want
             report(mouse=want)
 
     def hold_t(want):
         nonlocal held_t
         if want != held_t:
-            collect_key.send(want)
+            inputs.key('t', want)
             held_t = want
             report(collecting=want)
 
@@ -208,11 +203,11 @@ def main(hub=None):
         if 'roblox' not in title.value.lower():
             return False
         try:
-            keys.press(keyboard.Key.space)
+            inputs.key('space', True)
             held_space = True
             stopped.wait(0.08)
         finally:
-            keys.release(keyboard.Key.space)
+            inputs.key('space', False)
             held_space = False
         logger.info('Pulo periódico enviado')
         if hub:
@@ -400,7 +395,8 @@ def main(hub=None):
                         config['startup_shift'], active, stopped,
                         lambda: user32.GetForegroundWindow() == hwnd,
                         lambda: hold_mouse(False), lambda: hold_t(False),
-                        keys.press, keys.release, keyboard.Key.alt_l)
+                        lambda key: inputs.key(key, True),
+                        lambda key: inputs.key(key, False), 'alt_l')
                     if sent:
                         logger.info('Alt esquerdo enviado uma vez no início da sessão')
                     if stopped.is_set() or not active.is_set() or user32.GetForegroundWindow() != hwnd:
@@ -513,12 +509,16 @@ def main(hub=None):
         raise
     finally:
         ocr_stop.set()
-        hold_mouse(False)
-        hold_t(False)
+        cleanup = [lambda: hold_mouse(False), lambda: hold_t(False)]
         if held_space:
-            keys.release(keyboard.Key.space)
+            cleanup.append(lambda: inputs.key('space', False))
         if startup_lock.held:
-            keys.release(keyboard.Key.alt_l)
+            cleanup.append(lambda: inputs.key('alt_l', False))
+        for release in cleanup:
+            try:
+                release()
+            except Exception:
+                logger.exception('Falha ao liberar controle durante encerramento')
         listener.stop()
         logger.info('Sessão encerrada')
 

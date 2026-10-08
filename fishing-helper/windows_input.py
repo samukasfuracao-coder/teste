@@ -30,7 +30,9 @@ class Input(ctypes.Structure):
     _fields_ = [('type', DWORD), ('value', InputUnion)]
 
 
-class CollectKey:
+class WindowsInput:
+    SCANS = {'t': 0x14, 'space': 0x39, 'alt_l': 0x38}
+
     def __init__(self, sender=None):
         if sender is None:
             user32 = ctypes.WinDLL('user32', use_last_error=True)
@@ -39,12 +41,31 @@ class CollectKey:
             sender.restype = ctypes.c_uint32
         self.sender = sender
 
-    def send(self, down):
-        # T: scan code 0x14. No Unicode/character event is used.
-        event = Input(type=1)
-        event.value.keyboard = KeyboardInput(scan=0x14,
-                                             flags=0x0008 | (0 if down else 0x0002))
+    def _send(self, event, label):
         if self.sender(1, ctypes.pointer(event), ctypes.sizeof(Input)) != 1:
             raise RuntimeError(
-                'Windows não aceitou o comando T. Verifique se Roblox e Mukz '
+                f'Windows não aceitou o comando {label}. Verifique se Roblox e Mukz '
                 'estão no mesmo nível de permissão (ambos sem administrador).')
+
+    def key(self, name, down):
+        event = Input(type=1)
+        event.value.keyboard = KeyboardInput(scan=self.SCANS[name],
+                                             flags=0x0008 | (0 if down else 0x0002))
+        self._send(event, name)
+
+    def left_mouse(self, down):
+        event = Input(type=0)
+        event.value.mouse = MouseInput(flags=0x0002 if down else 0x0004)
+        self._send(event, 'mouse esquerdo')
+
+    def move(self, x, y):
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        user32.SetCursorPos.restype = ctypes.c_int
+        if not user32.SetCursorPos(int(x), int(y)):
+            raise RuntimeError('Windows não aceitou o posicionamento do mouse.')
+
+
+class CollectKey(WindowsInput):
+    def send(self, down):
+        self.key('t', down)

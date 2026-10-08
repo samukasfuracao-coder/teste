@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from windows_input import CollectKey, Input
+from windows_input import CollectKey, Input, WindowsInput
 
 
 class WindowsInputTests(unittest.TestCase):
@@ -28,3 +28,34 @@ class WindowsInputTests(unittest.TestCase):
     def test_rejected_input_is_reported_instead_of_claiming_key_is_held(self):
         with self.assertRaisesRegex(RuntimeError, 'Windows não aceitou'):
             CollectKey(lambda *args: 0).send(True)
+
+    def test_space_and_left_alt_scan_codes(self):
+        events = []
+
+        def sender(count, pointer, size):
+            event = pointer.contents
+            events.append((event.type, event.value.keyboard.scan, event.value.keyboard.flags))
+            return 1
+
+        inputs = WindowsInput(sender)
+        for name in ('space', 'alt_l'):
+            inputs.key(name, True)
+            inputs.key(name, False)
+        self.assertEqual(events, [(1, 0x39, 8), (1, 0x39, 10),
+                                  (1, 0x38, 8), (1, 0x38, 10)])
+
+    def test_mouse_is_button_input_and_never_a_keyboard_scan_code(self):
+        events = []
+
+        def sender(count, pointer, size):
+            events.append((pointer.contents.type, pointer.contents.value.mouse.flags))
+            return 1
+
+        inputs = WindowsInput(sender)
+        inputs.left_mouse(True)
+        inputs.left_mouse(False)
+        self.assertEqual(events, [(0, 2), (0, 4)])
+
+    def test_failed_mouse_input_is_reported(self):
+        with self.assertRaisesRegex(RuntimeError, 'mouse esquerdo'):
+            WindowsInput(lambda *args: 0).left_mouse(True)
